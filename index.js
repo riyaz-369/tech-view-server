@@ -6,7 +6,12 @@ require("dotenv").config();
 
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost:5173"],
+    origin: [
+      "http://localhost:5173",
+      "http://localhost:5173",
+      "https://tech-views.web.app",
+      "https://tech-views.firebaseapp.com/",
+    ],
   })
 );
 
@@ -29,8 +34,53 @@ async function run() {
     const productCollection = database.collection("products");
 
     app.get("/products", async (req, res) => {
-      const products = await productCollection.find().toArray();
-      res.send(products);
+      const {
+        search,
+        category,
+        priceRange,
+        sort,
+        page = 1,
+        limit = 10,
+      } = req.query;
+
+      console.log(req.query);
+
+      let query = {};
+      let sortOption = {};
+      const skip = (page - 1) * limit;
+      const limitInt = parseInt(limit);
+
+      if (search) {
+        query.product_name = { $regex: search, $options: "i" };
+      }
+
+      if (category) {
+        query.category = category;
+      }
+
+      if (priceRange) {
+        const [minPrice, maxPrice] = priceRange.split("-").map(Number);
+        query.price = { $gte: minPrice, $lte: maxPrice };
+      }
+
+      if (sort === "low-high") {
+        sortOption.price = 1;
+      } else if (sort === "high-low") {
+        sortOption.price = -1;
+      } else if (sort === "newest") {
+        sortOption.product_creation_date = -1;
+      }
+
+      const products = await productCollection
+        .find(query)
+        .sort(sortOption)
+        .skip(skip)
+        .limit(limitInt)
+        .toArray();
+      const totalProducts = await productCollection.countDocuments(query);
+      const totalPages = Math.ceil(totalProducts / limitInt);
+
+      res.send({ products, totalPages });
     });
 
     await client.connect();
